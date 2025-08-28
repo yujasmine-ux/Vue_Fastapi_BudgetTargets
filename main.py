@@ -1,141 +1,108 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <title>數據管理系統</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <script>
-        // 上傳檔案
-        async function uploadFile(event) {
-            event.preventDefault();
-            const form = document.getElementById('uploadForm');
-            const resultDiv = document.getElementById('result');
-            const formData = new FormData(form);
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+import pyodbc
+import pandas as pd
+import io
+import os
 
-            try {
-                const response = await fetch('http://127.0.0.1:5001/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-                resultDiv.innerHTML = response.ok
-                    ? `<div class="alert alert-success">${data.success}</div>`
-                    : `<div class="alert alert-danger">${data.error}</div>`;
-            } catch (error) {
-                resultDiv.innerHTML = `<div class="alert alert-danger">連線失敗: ${error.message}</div>`;
-            }
-        }
+app = FastAPI()
 
-        // 手動輸入
-        async function submitInput(event) {
-            event.preventDefault();
-            const resultDiv = document.getElementById('result');
-            const data = {
-                id: document.getElementById('inputId').value,
-                amount: parseFloat(document.getElementById('amount').value),
-                year: parseInt(document.getElementById('inputYear').value),
-                month: parseInt(document.getElementById('inputMonth').value),
-                store: document.getElementById('inputStore').value
-            };
+# 允許跨域請求，這在前後端分離部署時是必要的
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 實際部署時請替換為前端網站的 URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-            try {
-                const response = await fetch('http://127.0.0.1:5001/input', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                const result = await response.json();
-                resultDiv.innerHTML = response.ok
-                    ? `<div class="alert alert-success">${result.success}</div>`
-                    : `<div class="alert alert-danger">${result.error}</div>`;
-            } catch (error) {
-                resultDiv.innerHTML = `<div class="alert alert-danger">連線失敗: ${error.message}</div>`;
-            }
-        }
+# MSSQL 連線設定，從環境變數讀取以確保安全
+DB_CONNECTION_STRING = os.environ.get("DB_CONNECTION_STRING", "Driver={ODBC Driver 18 for SQL Server};Server=138.2.30.40,5857;Database=KPCOMP;UID=sa;PWD=Action282929;")
 
-        // 篩選資料
-        async function filterData(event) {
-            event.preventDefault();
-            const year = document.getElementById('year').value;
-            const month = document.getElementById('month').value;
-            const store = document.getElementById('store').value;
-            const resultDiv = document.getElementById('filterResult');
+def get_db_connection():
+    """建立並回傳資料庫連線"""
+    try:
+        conn = pyodbc.connect(DB_CONNECTION_STRING)
+        return conn
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to connect to database: {e}")
 
-            try {
-                const response = await fetch(`http://127.0.0.1:5001/filter_temp?year=${year}&month=${month}&store=${store}`);
-                const data = await response.json();
-                if (response.ok) {
-                    let html = '<table class="table table-striped"><thead><tr><th>ID</th><th>金額</th><th>年份</th><th>月份</th><th>門市</th></tr></thead><tbody>';
-                    data.forEach(row => {
-                        html += `<tr><td>${row.id}</td><td>${row.amount}</td><td>${row.year}</td><td>${row.month}</td><td>${row.store}</td></tr>`;
-                    });
-                    html += '</tbody></table>';
-                    resultDiv.innerHTML = html;
-                } else {
-                    resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                }
-            } catch (error) {
-                resultDiv.innerHTML = `<div class="alert alert-danger">篩選失敗: ${error.message}</div>`;
-            }
-        }
-    </script>
-</head>
-<body>
-    <div class="container mt-4">
-        <h1>數據管理系統</h1>
+def upsert_data_to_mssql(data: pd.DataFrame):
+    """將 DataFrame 資料 Upsert 到 MSSQL"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 逐筆處理，並使用參數化查詢來防止 SQL 注入
+        for index, row in data.iterrows():
+            store_name = row.get('StoreName')
+            year = int(row.get('Year'))
+            month = int(row.get('Month'))
+            amount = float(row.get('Amount'))
 
-        <!-- 上傳表單 -->
-        <h3>上傳檔案</h3>
-        <form id="uploadForm" onsubmit="uploadFile(event)">
-            <div class="mb-3">
-                <label for="fileInput" class="form-label">選擇 CSV 或 Excel 檔案</label>
-                <input type="file" class="form-control" id="fileInput" name="file" accept=".csv, .xlsx" required>
-            </div>
-            <button type="submit" class="btn btn-primary">上傳並暫存</button>
-        </form>
+            # 使用 IF EXISTS 實現 Upsert
+            cursor.execute("""
+                IF EXISTS (SELECT 1 FROM SalesData WHERE StoreName = ? AND Year = ? AND Month = ?)
+                BEGIN
+                    UPDATE SalesData SET Amount = ?, LastUpdated = GETDATE()
+                    WHERE StoreName = ? AND Year = ? AND Month = ?
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO SalesData (StoreName, Year, Month, Amount)
+                    VALUES (?, ?, ?, ?)
+                END
+            """, store_name, year, month, amount, store_name, year, month, amount)
+        
+        conn.commit()
+        return {"status": "success", "message": "Data synchronized successfully."}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Database synchronization failed: {e}")
+    finally:
+        conn.close()
 
-        <!-- 手動輸入表單 -->
-        <h3 class="mt-5">手動輸入</h3>
-        <form id="inputForm" onsubmit="submitInput(event)">
-            <div class="row mb-3">
-                <div class="col">
-                    <input type="text" class="form-control" id="inputId" placeholder="ID" required>
-                </div>
-                <div class="col">
-                    <input type="number" step="0.01" class="form-control" id="amount" placeholder="金額" required>
-                </div>
-                <div class="col">
-                    <input type="number" class="form-control" id="inputYear" placeholder="年份 (如 2023)" required>
-                </div>
-                <div class="col">
-                    <input type="number" class="form-control" id="inputMonth" placeholder="月份 (1-12)" required>
-                </div>
-                <div class="col">
-                    <input type="text" class="form-control" id="inputStore" placeholder="門市 (如 StoreA)" required>
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary">儲存到暫存</button>
-        </form>
-        <div id="result" class="mt-3"></div>
+@app.post("/api/upload-file")
+async def upload_and_sync_file(file: UploadFile = File(...)):
+    """處理檔案上傳並同步資料"""
+    try:
+        file_extension = file.filename.split('.')[-1]
+        contents = await file.read()
+        
+        if file_extension == 'csv':
+            df = pd.read_csv(io.BytesIO(contents))
+        elif file_extension in ['xlsx', 'xls']:
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type.")
 
-        <!-- 篩選表單 -->
-        <h3 class="mt-5">篩選暫存資料</h3>
-        <form onsubmit="filterData(event)">
-            <div class="row mb-3">
-                <div class="col">
-                    <input type="number" class="form-control" id="year" placeholder="年份 (如 2023)">
-                </div>
-                <div class="col">
-                    <input type="number" class="form-control" id="month" placeholder="月份 (1-12)">
-                </div>
-                <div class="col">
-                    <input type="text" class="form-control" id="store" placeholder="門市 (如 StoreA)">
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary">篩選</button>
-        </form>
-        <div id="filterResult" class="mt-3"></div>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+        # 簡單的資料驗證
+        required_columns = ['StoreName', 'Year', 'Month', 'Amount']
+        if not all(col in df.columns for col in required_columns):
+            raise HTTPException(status_code=400, detail=f"Missing required columns. Please check your file headers.")
+        
+        return upsert_data_to_mssql(df)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File processing failed: {e}")
+
+class ManualData(BaseModel):
+    store_name: str
+    year: int
+    month: int
+    amount: float
+
+@app.post("/api/manual-sync")
+async def sync_manual_data(items: List[ManualData]):
+    """處理手動輸入資料並同步"""
+    try:
+        # 將 Pydantic 模型轉換為 DataFrame
+        data_list = [item.dict() for item in items]
+        df = pd.DataFrame(data_list)
+        df.rename(columns={'store_name': 'StoreName', 'year': 'Year', 'month': 'Month', 'amount': 'Amount'}, inplace=True)
+        
+        return upsert_data_to_mssql(df)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Manual data synchronization failed: {e}")
