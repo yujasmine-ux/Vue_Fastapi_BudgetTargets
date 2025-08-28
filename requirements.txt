@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 annotated-types==0.7.0 ; python_version >= "3.13"
 anyio==4.10.0 ; python_version >= "3.13"
 certifi==2025.8.3 ; python_version >= "3.13"
@@ -20,7 +19,6 @@ typing-extensions==4.15.0 ; python_version >= "3.13"
 typing-inspection==0.4.1 ; python_version >= "3.13"
 urllib3==2.5.0 ; python_version >= "3.13"
 uvicorn==0.35.0 ; python_version >= "3.13"
-=======
 annotated-types==0.7.0 ; python_version >= "3.13"
 anyio==4.10.0 ; python_version >= "3.13"
 certifi==2025.8.3 ; python_version >= "3.13"
@@ -42,4 +40,3 @@ typing-extensions==4.15.0 ; python_version >= "3.13"
 typing-inspection==0.4.1 ; python_version >= "3.13"
 urllib3==2.5.0 ; python_version >= "3.13"
 uvicorn==0.35.0 ; python_version >= "3.13"
->>>>>>> ee23bbf62b1b12da5840f3e4ccbe28617e56f3cc
