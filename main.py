@@ -12,7 +12,7 @@ app = FastAPI()
 # 允許跨域請求，這在前後端分離部署時是必要的
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 實際部署時請替換為前端網站的 URL
+    allow_origins=["https://vue-fastapi-budgettargets.onrender.com"],  # 實際部署時請替換為前端網站的 URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
