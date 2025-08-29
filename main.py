@@ -12,7 +12,8 @@ app = FastAPI()
 # 允許跨域請求，這在前後端分離部署時是必要的
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://vue-fastapi-budgettargets.onrender.com", "https://vue-website-budget-targets-amber.vercel.app"],  # 實際部署時請替換為前端網站的 URL
+    # 修正此處，將您的前端網址加入
+    allow_origins=["https://vue-fastapi-budgettargets.onrender.com", "https://vue-website-budget-targets-amber.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,7 +22,7 @@ app.add_middleware(
 # Google App Script Web App 網址，從環境變數讀取
 APP_SCRIPT_URL = os.environ.get("APP_SCRIPT_URL")
 
-# 如果沒有設定環境變數，則使用這個預設值
+# 如果沒有設定環境變數，則會報錯
 if not APP_SCRIPT_URL:
     raise RuntimeError("APP_SCRIPT_URL environment variable is not set.")
 
