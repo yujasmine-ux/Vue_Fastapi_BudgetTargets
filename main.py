@@ -12,8 +12,10 @@ app = FastAPI()
 # 允許跨域請求，這在前後端分離部署時是必要的
 app.add_middleware(
     CORSMiddleware,
-    # 修正此處，將您的前端網址加入
-    allow_origins=["https://vue-fastapi-budgettargets.onrender.com", "https://vue-website-budget-targets-amber.vercel.app"],
+    allow_origins=[
+        "https://vue-fastapi-budgettargets.onrender.com",  # 後端 API 網址
+        "https://vue-website-budget-targets-amber.vercel.app"  # 您的前端網站網址
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
