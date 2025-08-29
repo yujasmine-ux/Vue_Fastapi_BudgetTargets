@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 # Google App Script Web App 網址，從環境變數讀取
-APP_SCRIPT_URL = os.environ.get("https://script.google.com/macros/s/AKfycbxvLZpC3MDrwBh4ehfeUE66MWLXAZN7ivkIX-btrnixcy6a0DCwYBNaW9aHKTT4l0eNFQ/exec")
+APP_SCRIPT_URL = os.environ.get("APP_SCRIPT_URL")
 
 # 如果沒有設定環境變數，則使用這個預設值
 if not APP_SCRIPT_URL:
